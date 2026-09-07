@@ -9,6 +9,7 @@ import { Badge, Card, Empty, ErrorNote, Spinner, Stat } from '../components/ui'
 import { FacilityPicker } from '../components/FacilityPicker'
 import { ParkingMap } from '../components/ParkingMap'
 import { VoiceAssistant } from '../components/VoiceAssistant'
+import { NewFacilityModal } from '../components/NewFacilityModal'
 import { LineChart } from '../components/charts/LineChart'
 import { clockTime, compactMoney, duration, money, relativeTime, titleCase } from '../lib/format'
 import type { LiveEvent } from '../lib/types'
@@ -29,6 +30,7 @@ const TOPIC_TONE: Record<string, 'good' | 'bad' | 'warn' | 'info' | 'violet' | '
 export function OwnerDashboard() {
   const { facilities, facility, facilityId, select } = useFacility()
   const [events, setEvents] = useState<LiveEvent[]>([])
+  const [creating, setCreating] = useState(false)
   const [connection, setConnection] = useState<'connecting' | 'open' | 'closed'>('connecting')
 
   const levels = useAsync(async () => (facilityId ? api.levels(facilityId) : []), [facilityId])
@@ -75,10 +77,28 @@ export function OwnerDashboard() {
   if (facilities.error) return <ErrorNote message={facilities.error} onRetry={facilities.refresh} />
   if (!facility) {
     return (
-      <Empty
-        title="No facilities yet."
-        hint="Create a facility to start mapping bays and taking vehicles."
-      />
+      <>
+        <Card title="Welcome to SmartPark">
+          <Empty
+            title="No facilities yet."
+            hint="A facility is the car park itself — its bays, gates and rate card. Everything else in the console reads from it, so this is the first step."
+            action={
+              <button className="btn-primary" onClick={() => setCreating(true)}>
+                Create your first facility
+              </button>
+            }
+          />
+        </Card>
+        <NewFacilityModal
+          open={creating}
+          onClose={() => setCreating(false)}
+          onCreated={(created) => {
+            setCreating(false)
+            select(created.id)
+            facilities.refresh()
+          }}
+        />
+      </>
     )
   }
 
@@ -104,6 +124,16 @@ export function OwnerDashboard() {
 
   return (
     <div className="space-y-5">
+      <NewFacilityModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(created) => {
+          setCreating(false)
+          select(created.id)
+          facilities.refresh()
+        }}
+      />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-white">{facility.name}</h1>
@@ -112,8 +142,11 @@ export function OwnerDashboard() {
             {titleCase(facility.allocation_strategy)} allocation
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <FacilityPicker facilities={facilities.data ?? []} value={facilityId} onChange={select} />
+          <button className="btn-ghost btn-sm" onClick={() => setCreating(true)}>
+            + New facility
+          </button>
           <Badge tone={connection === 'open' ? 'good' : connection === 'connecting' ? 'warn' : 'bad'}>
             {connection === 'open' ? 'Live' : connection}
           </Badge>
