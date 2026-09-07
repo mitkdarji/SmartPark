@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data / artifacts
+*.db
+*.sqlite3
+backend/data/*.db
+backend/data/artifacts/
+backend/data/uploads/
+backend/data/models/*.joblib
+*.log
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Env / secrets
+.env
+.env.local
+*.pem
+
+# OS
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# TypeScript incremental build cache
+*.tsbuildinfo

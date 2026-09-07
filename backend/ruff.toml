@@ -1,0 +1,16 @@
+line-length = 100
+target-version = "py312"
+exclude = [".venv", "data", "__pycache__"]
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    "E501",    # long lines are handled by the formatter, not the linter
+    "B008",    # FastAPI's Depends()/File() in defaults is the documented idiom
+    "RUF012",  # ClassVar annotations add noise to plain config dicts
+    "SIM108",  # a ternary is not always clearer than an if/else
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["S101"]
+"scripts/*" = ["E402"]      # sys.path setup must precede app imports

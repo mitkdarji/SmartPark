@@ -1,0 +1,13 @@
+**/__pycache__
+**/*.pyc
+**/.venv
+**/node_modules
+**/dist
+**/.pytest_cache
+**/.ruff_cache
+**/data/*.db
+**/data/uploads
+**/data/models
+.git
+.env
+*.log

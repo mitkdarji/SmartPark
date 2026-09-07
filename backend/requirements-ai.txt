@@ -1,0 +1,12 @@
+# Optional heavyweight AI backends.
+#   pip install -r requirements-ai.txt
+#
+# SmartPark runs fully without these: the ANPR ensemble falls back to the
+# OpenCV+segmentation reader and the Claude vision backend, and the voice
+# pipeline falls back to browser-side Web Speech. Install these to enable
+# fully on-device OCR and speech.
+
+easyocr==1.7.2            # deep-learning OCR (pulls torch)
+pytesseract==0.3.13       # requires the `tesseract` binary on PATH
+faster-whisper==1.1.1     # on-device speech-to-text
+pyttsx3==2.98             # offline text-to-speech
