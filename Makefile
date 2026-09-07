@@ -1,9 +1,10 @@
-.PHONY: help setup backend frontend dev seed test lint fmt bench docker clean
+.PHONY: help setup backend frontend dev seed backup test lint fmt bench docker clean
 
 help:
 	@echo "SmartPark — make targets"
 	@echo "  make setup     Install backend + frontend dependencies"
-	@echo "  make seed      Reset DB and load a realistic demo facility"
+	@echo "  make seed      Reset DB and load a realistic demo facility (DESTRUCTIVE)"
+	@echo "  make backup    Copy the SQLite database to a timestamped file"
 	@echo "  make backend   Run FastAPI on :8000"
 	@echo "  make frontend  Run Vite dev server on :5173"
 	@echo "  make dev       Run both (backend in background)"
@@ -15,8 +16,14 @@ setup:
 	cd backend && python3 -m venv .venv && .venv/bin/pip install -U pip && .venv/bin/pip install -r requirements.txt
 	cd frontend && npm install
 
+# Destructive: drops every table. Refuses to run if the database holds accounts
+# the seed script did not create — pass --force to override.
 seed:
 	cd backend && .venv/bin/python -m scripts.seed --reset
+
+backup:
+	@cp backend/data/smartpark.db backend/data/smartpark.$$(date +%Y%m%d-%H%M%S).db
+	@echo "Saved to backend/data/smartpark.$$(date +%Y%m%d-%H%M%S).db"
 
 backend:
 	cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000

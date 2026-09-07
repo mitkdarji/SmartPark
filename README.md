@@ -26,6 +26,12 @@ make backend    # http://localhost:8000  (API docs at /docs)
 make frontend   # http://localhost:5173
 ```
 
+> **Your data persists.** Accounts and facilities you create live in
+> `backend/data/smartpark.db` (or the `pgdata` volume under Docker) and survive
+> restarts. `make seed` is *destructive* — it now refuses to run when the
+> database holds accounts it did not create, and `make backup` snapshots the
+> file first.
+
 Sign in with any of the seeded accounts (password `SmartPark2026!`):
 
 | Account | Email | What you get |

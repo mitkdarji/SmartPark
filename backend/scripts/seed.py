@@ -71,6 +71,18 @@ log = get_logger("seed")
 
 DEMO_PASSWORD = "SmartPark2026!"
 
+# Accounts this script creates. Anything outside this set was made by hand, so
+# wiping it would destroy real work rather than reset a demo.
+SEEDED_EMAILS = {
+    "admin@smartpark.dev",
+    "owner@smartpark.dev",
+    *(email for email, *_ in [
+        ("mit.darji@smartpark.dev",), ("abhishek.patel@smartpark.dev",),
+        ("priya.shah@smartpark.dev",), ("rahul.mehta@smartpark.dev",),
+        ("neha.iyer@smartpark.dev",), ("arjun.rao@smartpark.dev",),
+    ]),
+}
+
 DRIVERS = [
     ("mit.darji@smartpark.dev", "Mit Darji", "GJ01AB1234", VehicleType.SEDAN, False),
     ("abhishek.patel@smartpark.dev", "Abhishek Patel", "GJ18CD5678", VehicleType.SUV, False),
@@ -87,6 +99,55 @@ AUTHORISED_CAMPUS = [
     ("GJ27FA0002", "Faculty pool car"),
     ("GJ27SE0100", "Campus security"),
 ]
+
+
+async def guard_existing_data(force: bool) -> None:
+    """Refuse to wipe hand-made accounts unless the caller insists.
+
+    Both seed paths are destructive — `--reset` drops every table and the
+    default wipes every row. That is correct for a demo reset and catastrophic
+    for someone who has spent an afternoon drawing a facility. So the script
+    looks first, names exactly what it would destroy, and stops.
+    """
+    try:
+        async with SessionLocal() as db:
+            users = (await db.execute(select(User))).scalars().all()
+            facilities = (await db.execute(select(Facility))).scalars().all()
+    except Exception:
+        return  # no database yet — nothing to protect
+
+    seeded_ids = {u.id for u in users if u.email in SEEDED_EMAILS}
+    handmade_users = [u for u in users if u.email not in SEEDED_EMAILS]
+    handmade_facilities = [f for f in facilities if f.owner_id not in seeded_ids]
+
+    if not handmade_users and not handmade_facilities:
+        return
+
+    print("\n" + "!" * 68)
+    print("  This database contains data the seed script did not create.")
+    print("!" * 68)
+    if handmade_users:
+        print(f"\n  {len(handmade_users)} account(s):")
+        for user in handmade_users[:10]:
+            print(f"    - {user.email}  ({user.role})")
+    if handmade_facilities:
+        print(f"\n  {len(handmade_facilities)} facility/facilities:")
+        for facility in handmade_facilities[:10]:
+            print(f"    - {facility.name}")
+
+    if force:
+        print("\n  --force given: proceeding, and all of the above will be destroyed.\n")
+        return
+
+    print(
+        "\n  Seeding would destroy all of it.\n"
+        "\n  Back it up first:"
+        "\n    cp backend/data/smartpark.db backend/data/smartpark.backup.db"
+        "\n"
+        "\n  Then re-run with --force if you really want a clean slate:"
+        "\n    python -m scripts.seed --reset --force\n"
+    )
+    raise SystemExit(1)
 
 
 async def reset_database() -> None:
@@ -635,7 +696,13 @@ async def main() -> None:
     parser.add_argument("--reset", action="store_true", help="Drop and recreate every table.")
     parser.add_argument("--days", type=int, default=21, help="Days of history to back-fill.")
     parser.add_argument("--train", action="store_true", help="Train the ML models afterwards.")
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Wipe even if the database holds accounts this script did not create.",
+    )
     args = parser.parse_args()
+
+    await guard_existing_data(args.force)
 
     if args.reset:
         await reset_database()
