@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_ROOT.parent
@@ -34,7 +35,12 @@ class Settings(BaseSettings):
     # ── Security ──────────────────────────────────────────────
     secret_key: str = "dev-only-insecure-secret-change-me"
     access_token_expire_minutes: int = 720
-    cors_origins: list[str] = Field(
+    # `NoDecode` is required: without it pydantic-settings tries to JSON-decode a
+    # list-typed environment variable *before* any validator runs, so a plain
+    # comma-separated CORS_ORIGINS raises SettingsError at import time. That only
+    # shows up when the value is actually set in the environment — i.e. in the
+    # container, never in local development where the default factory is used.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
     )
 
@@ -52,7 +58,7 @@ class Settings(BaseSettings):
     genai_max_tokens: int = 2048
 
     # ── Computer vision ───────────────────────────────────────
-    anpr_ocr_backends: list[str] = Field(
+    anpr_ocr_backends: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["easyocr", "tesseract", "vision_llm", "synthetic"]
     )
     anpr_min_confidence: float = 0.55
@@ -118,8 +124,17 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", "anpr_ocr_backends", mode="before")
     @classmethod
     def _split_csv(cls, v: object) -> object:
+        """Accept both `a,b,c` and a JSON array, so either style works in a .env."""
         if isinstance(v, str):
-            return [item.strip() for item in v.split(",") if item.strip()]
+            text = v.strip()
+            if text.startswith("["):
+                import json
+
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    pass
+            return [item.strip() for item in text.split(",") if item.strip()]
         return v
 
     @field_validator("database_url")

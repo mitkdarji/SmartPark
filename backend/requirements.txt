@@ -8,7 +8,8 @@ httpx==0.28.1
 
 # ── Persistence ───────────────────────────────────────────────
 SQLAlchemy==2.0.36
-aiosqlite==0.20.0
+aiosqlite==0.20.0        # SQLite driver — the zero-setup default
+asyncpg==0.30.0         # PostgreSQL driver — used by docker-compose and any real deployment
 greenlet==3.1.1
 
 # ── Auth ──────────────────────────────────────────────────────

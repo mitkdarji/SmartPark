@@ -166,12 +166,22 @@ entry-to-exit lifecycle over HTTP.
 ## Deployment
 
 ```bash
-make docker      # api + postgres + redis + nginx
+make docker                                   # api + postgres + redis + nginx
+docker compose exec api python -m scripts.seed --reset --train
+open http://localhost:8080
 ```
 
 The Dockerfile is a multi-stage build (frontend → static, backend → slim runtime)
-running as a non-root user with a health check. `docker-compose.yml` wires in
-Postgres and Redis; the application code does not change — only `DATABASE_URL`.
+running as a non-root user with a health check. Compose wires in Postgres and
+Redis; the application code does not change — only `DATABASE_URL`.
+
+Verified end to end on the compose stack: all four containers healthy, the SPA
+and its deep links served through nginx, WebSocket upgrades proxied correctly,
+and a full entry→exit lifecycle against PostgreSQL.
+
+In the container the SPA is served at `/` and the JSON service banner moves to
+`/api`; nginx fronts everything on **:8080** and the API is also exposed directly
+on **:8000**.
 
 ---
 
