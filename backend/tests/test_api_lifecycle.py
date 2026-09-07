@@ -295,3 +295,97 @@ async def test_openapi_schema_builds(client):
     schema = response.json()
     assert schema["info"]["title"]
     assert len(schema["paths"]) > 40
+
+
+async def test_registering_a_plate_adopts_its_in_progress_session(client, facility):
+    """Park first, sign up second — which is what drivers actually do.
+
+    The owner link is captured once at entry, so a vehicle that was a guest when
+    it drove in would otherwise show "not parked" to the account that registers
+    it minutes later, and be billed as an uncollected guest on the way out.
+    """
+    fid = facility["id"]
+
+    # A completely unknown plate enters: this is a guest session.
+    entry = (
+        await client.post(
+            "/api/v1/gates/scan/entry", json={"facility_id": fid, "plate": "GJ01HV9887"}
+        )
+    ).json()
+    assert entry["allowed"] is True
+    session_id = entry["session_id"]
+
+    # Only now does the driver create an account for that plate.
+    account = await register(client, "late-signup@test.dev", plate="GJ01HV9887")
+
+    active = await client.get(
+        "/api/v1/sessions/active", headers=auth(account["access_token"])
+    )
+    assert active.status_code == 200
+    body = active.json()
+    assert body is not None, "the newly registered driver still sees no active session"
+    assert body["id"] == session_id
+    assert body["slot_code"]
+
+
+async def test_adding_a_vehicle_later_also_adopts_its_session(client, driver, facility):
+    """Same rule for an existing account adding a second vehicle."""
+    fid = facility["id"]
+    entry = (
+        await client.post(
+            "/api/v1/gates/scan/entry", json={"facility_id": fid, "plate": "KA05ZZ7788"}
+        )
+    ).json()
+
+    added = await client.post(
+        "/api/v1/vehicles",
+        headers=auth(driver["access_token"]),
+        json={"plate": "KA05ZZ7788"},
+    )
+    assert added.status_code == 201
+
+    sessions = (
+        await client.get("/api/v1/sessions/me", headers=auth(driver["access_token"]))
+    ).json()
+    assert entry["session_id"] in [s["id"] for s in sessions["items"]]
+
+
+async def test_a_late_registered_vehicle_is_billed_to_its_wallet(client, facility):
+    """The billing half of the same bug: a claimed session must not settle as a guest."""
+    fid = facility["id"]
+    await client.post(
+        "/api/v1/gates/scan/entry", json={"facility_id": fid, "plate": "TN11LATE001"}
+    )
+    account = await register(client, "billed-late@test.dev", plate="TN11LATE001")
+
+    settled = (
+        await client.post(
+            "/api/v1/gates/scan/exit", json={"facility_id": fid, "plate": "TN11LATE001"}
+        )
+    ).json()
+    # Inside the free period the total is zero, but it must be *settled*, never
+    # left as an uncollected guest charge.
+    assert settled["payment_status"] in ("paid", "waived")
+
+    history = (
+        await client.get("/api/v1/sessions/me", headers=auth(account["access_token"]))
+    ).json()
+    assert history["total"] == 1
+
+
+async def test_completed_guest_sessions_are_not_retroactively_claimed(client, facility):
+    """A plate changing hands must not hand over the previous keeper's history."""
+    fid = facility["id"]
+    await client.post(
+        "/api/v1/gates/scan/entry", json={"facility_id": fid, "plate": "WB07OLD5555"}
+    )
+    await client.post(
+        "/api/v1/gates/scan/exit", json={"facility_id": fid, "plate": "WB07OLD5555"}
+    )
+
+    # A different person registers that plate afterwards.
+    newcomer = await register(client, "new-keeper@test.dev", plate="WB07OLD5555")
+    history = (
+        await client.get("/api/v1/sessions/me", headers=auth(newcomer["access_token"]))
+    ).json()
+    assert history["total"] == 0, "a settled visit was exposed to a later registrant"

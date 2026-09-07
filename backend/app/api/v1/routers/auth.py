@@ -14,6 +14,7 @@ from app.core.security import create_access_token, hash_password, verify_passwor
 from app.models.user import User, Vehicle, Wallet
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserOut, WalletOut
 from app.services.anpr.plate_utils import normalize_plate, pretty_plate
+from app.services.parking import claim_open_sessions
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -50,11 +51,14 @@ async def register(payload: RegisterRequest, db: DbSession) -> TokenResponse:
         ).scalar_one_or_none()
         if clash is not None:
             raise Conflict(f"Vehicle {pretty_plate(plate)} is already registered.")
-        db.add(
-            Vehicle(
-                owner_id=user.id, plate=pretty_plate(plate), plate_normalized=plate
-            )
+        vehicle = Vehicle(
+            owner_id=user.id, plate=pretty_plate(plate), plate_normalized=plate
         )
+        db.add(vehicle)
+        await db.flush()
+        # Someone who parked before signing up should find their car waiting for
+        # them in the app, not a "not parked" empty state.
+        await claim_open_sessions(db, vehicle)
 
     await db.commit()
     await db.refresh(user)

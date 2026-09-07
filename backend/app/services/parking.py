@@ -25,7 +25,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AccessDenied, Conflict, NotFound, RecognitionFailed
@@ -365,6 +365,23 @@ class ParkingService:
                 details={"plate": plate, "read_confidence": recognition.confidence},
             )
 
+        # The plate may have been registered *after* this session began. Re-resolve
+        # the owner now so the stay is settled from their wallet rather than being
+        # written off as an uncollected guest visit.
+        if session.user_id is None:
+            registered = (
+                await db.execute(
+                    select(Vehicle).where(Vehicle.plate_normalized == plate)
+                )
+            ).scalar_one_or_none()
+            if registered is not None:
+                session.user_id = registered.owner_id
+                session.vehicle_id = registered.id
+                log.info(
+                    "resolved a guest session to a now-registered owner",
+                    extra={"session_id": session.id, "plate": plate},
+                )
+
         now = datetime.now(UTC)
         duration_minutes = session.elapsed_minutes(now)
         slot = await db.get(Slot, session.slot_id) if session.slot_id else None
@@ -645,6 +662,43 @@ class ParkingService:
             },
             facility_id=facility.id,
         )
+
+
+async def claim_open_sessions(db: AsyncSession, vehicle: Vehicle) -> int:
+    """Attach any in-progress session for this plate to its newly-registered owner.
+
+    A driver who parks first and signs up second — which is what people actually
+    do — would otherwise see "not parked" while their car is demonstrably inside,
+    and be billed as a guest at the exit gate despite having a funded wallet. The
+    owner link is captured once at entry, so without this it is never revisited.
+
+    Only ACTIVE sessions are claimed. Completed ones stay with whoever they were
+    recorded against: retroactively attaching a settled visit would hand a
+    previous keeper's parking history to whoever registers the plate next.
+
+    Note the trust boundary. Registering a plate already grants every *future*
+    session for it, so claiming the current one adds no new exposure — but it
+    does make the gap visible: nothing here proves the registrant owns the
+    vehicle. Production needs real verification (an RC lookup, or an OTP to the
+    mobile number on the registration) before this endpoint can be trusted.
+    """
+    result = await db.execute(
+        update(ParkingSession)
+        .where(
+            ParkingSession.plate_normalized == vehicle.plate_normalized,
+            ParkingSession.status == SessionStatus.ACTIVE,
+            ParkingSession.user_id.is_(None),
+        )
+        .values(user_id=vehicle.owner_id, vehicle_id=vehicle.id)
+    )
+    claimed = int(result.rowcount or 0)
+    if claimed:
+        log.info(
+            "claimed in-progress sessions for a newly registered vehicle",
+            extra={"plate": vehicle.plate_normalized, "owner_id": vehicle.owner_id,
+                   "sessions": claimed},
+        )
+    return claimed
 
 
 def facility_min_confidence(facility: Facility) -> float:

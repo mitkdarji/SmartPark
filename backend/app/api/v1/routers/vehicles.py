@@ -7,9 +7,13 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.errors import Conflict, NotFound
+from app.core.logging import get_logger
 from app.models.user import Vehicle
 from app.schemas.parking import VehicleCreate, VehicleOut
 from app.services.anpr.plate_utils import is_valid_plate, normalize_plate, pretty_plate
+from app.services.parking import claim_open_sessions
+
+log = get_logger(__name__)
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
 
@@ -40,9 +44,16 @@ async def add_vehicle(
         **payload.model_dump(exclude={"plate"}),
     )
     db.add(vehicle)
+    await db.flush()
+    # If this vehicle is already inside a facility, adopt that session now.
+    claimed = await claim_open_sessions(db, vehicle)
     await db.commit()
     await db.refresh(vehicle)
-    return VehicleOut.model_validate(vehicle)
+
+    out = VehicleOut.model_validate(vehicle)
+    if claimed:
+        log.info("vehicle registered mid-stay", extra={"sessions_claimed": claimed})
+    return out
 
 
 @router.get("", response_model=list[VehicleOut])

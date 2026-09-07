@@ -89,6 +89,28 @@ nightly, so a bug is found by the system rather than by a customer.
 Every mutation takes an idempotency key. A gate controller that retries after a
 network timeout settles the bill once.
 
+### Vehicle ownership is resolved late, not only at entry
+
+A session captures its owner when the car drives in. A plate that belongs to
+nobody yet becomes a guest session — correct at the time, but wrong forever if
+the driver signs up ten minutes later while walking into the mall. They would see
+"not parked" with their car demonstrably inside, and be billed as an uncollected
+guest despite a funded wallet.
+
+So ownership is resolved at three points, not one: at entry, when a vehicle is
+registered (`claim_open_sessions` adopts any *active* session for that plate),
+and again at exit as a final check before the wallet is charged.
+
+Only active sessions are ever claimed. Completed ones stay with whoever they were
+recorded against — retroactively attaching a settled visit would hand a previous
+keeper's parking history to whoever registers the plate next.
+
+**Known limitation:** nothing proves the registrant owns the vehicle. Registering
+a plate already grants every future session for it, so claiming the current one
+adds no new exposure — but production needs real verification (an RC lookup, or
+an OTP to the mobile number on the registration) before this endpoint can carry
+that trust.
+
 ### AI degrades instead of failing
 
 `ClaudeClient.enabled` is false without an API key, and every caller has a
