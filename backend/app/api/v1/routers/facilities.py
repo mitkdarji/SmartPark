@@ -25,6 +25,7 @@ from app.schemas.facility import (
     FacilityUpdate,
     GateCreate,
     GateOut,
+    GateUpdate,
     LevelCreate,
     LevelOut,
     SlotBulkUpsert,
@@ -409,12 +410,60 @@ async def list_gates(facility: PublicFacility, db: DbSession) -> list[GateOut]:
     return [GateOut.model_validate(gate) for gate in gates]
 
 
+@router.patch("/{facility_id}/gates/{gate_id}", response_model=GateOut)
+async def update_gate(
+    gate_id: int, payload: GateUpdate, facility: OwnedFacility, db: DbSession
+) -> GateOut:
+    gate = await db.get(Gate, gate_id)
+    if gate is None or gate.facility_id != facility.id:
+        raise NotFound(f"Gate {gate_id} was not found at this facility.")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if changes.get("is_primary"):
+        # Exactly one primary gate: it is the origin every stored distance is
+        # measured from, so two of them would make those distances meaningless.
+        for other in (
+            await db.execute(
+                select(Gate).where(Gate.facility_id == facility.id, Gate.id != gate_id)
+            )
+        ).scalars().all():
+            other.is_primary = False
+
+    for key, value in changes.items():
+        setattr(gate, key, value)
+    await db.flush()
+
+    if {"x", "y", "is_primary", "is_active", "level_id"} & changes.keys():
+        await layout_service.recompute_distances(db, facility.id)
+
+    await db.commit()
+    await db.refresh(gate)
+    return GateOut.model_validate(gate)
+
+
 @router.delete("/{facility_id}/gates/{gate_id}", status_code=204, response_model=None)
 async def delete_gate(gate_id: int, facility: OwnedFacility, db: DbSession) -> None:
     gate = await db.get(Gate, gate_id)
     if gate is None or gate.facility_id != facility.id:
         raise NotFound(f"Gate {gate_id} was not found at this facility.")
+
+    remaining = (
+        await db.execute(
+            select(Gate).where(Gate.facility_id == facility.id, Gate.id != gate_id)
+        )
+    ).scalars().all()
+    if not remaining:
+        raise Conflict(
+            "A facility needs at least one gate — vehicles have no way in otherwise."
+        )
+
     await db.delete(gate)
+    await db.flush()
+    # Promote a successor if the primary was removed, then re-measure distances.
+    if gate.is_primary:
+        remaining[0].is_primary = True
+        await db.flush()
+    await layout_service.recompute_distances(db, facility.id)
     await db.commit()
 
 

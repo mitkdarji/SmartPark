@@ -171,6 +171,10 @@ export const api = {
   gates: (id: number) => get<Gate[]>(`/facilities/${id}/gates`),
   createGate: (id: number, payload: Record<string, unknown>) =>
     post<Gate>(`/facilities/${id}/gates`, payload),
+  updateGate: (id: number, gateId: number, payload: Record<string, unknown>) =>
+    request<Gate>(`/facilities/${id}/gates/${gateId}`, { method: 'PATCH', body: payload }),
+  deleteGate: (id: number, gateId: number) =>
+    request<void>(`/facilities/${id}/gates/${gateId}`, { method: 'DELETE' }),
   authorized: (id: number) => get<any[]>(`/facilities/${id}/authorized`),
   addAuthorized: (id: number, payload: Record<string, unknown>) =>
     post<any>(`/facilities/${id}/authorized`, payload),

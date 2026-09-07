@@ -12,8 +12,8 @@ import { useAsync } from '../hooks/useAsync'
 import { useFacility } from '../hooks/useFacility'
 import { Badge, Card, Empty, ErrorNote, Modal, Spinner } from '../components/ui'
 import { FacilityPicker } from '../components/FacilityPicker'
-import { LayoutEditor, toDraft } from '../components/LayoutEditor'
-import type { DraftSlot } from '../components/LayoutEditor'
+import { LayoutEditor, toDraft, toDraftGate } from '../components/LayoutEditor'
+import type { Aisle, DraftGate, DraftSlot } from '../components/LayoutEditor'
 import type { SlotType } from '../lib/types'
 
 export function LayoutBuilder() {
@@ -34,6 +34,8 @@ export function LayoutBuilder() {
   const gates = useAsync(async () => (facilityId ? api.gates(facilityId) : []), [facilityId])
 
   const [draft, setDraft] = useState<DraftSlot[]>([])
+  const [draftAisles, setDraftAisles] = useState<Aisle[]>([])
+  const [draftGates, setDraftGates] = useState<DraftGate[]>([])
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -52,8 +54,33 @@ export function LayoutBuilder() {
     [levels.data, levelId],
   )
 
+  useEffect(() => {
+    setDraftAisles((level?.aisles ?? []) as Aisle[])
+  }, [level])
+
+  useEffect(() => {
+    // Gates belong to the facility, but only those on this level (or unassigned)
+    // are meaningful on this canvas.
+    setDraftGates(
+      (gates.data ?? [])
+        .filter((g) => !g.level_id || g.level_id === levelId)
+        .map(toDraftGate),
+    )
+  }, [gates.data, levelId])
+
+
   const update = (next: DraftSlot[]) => {
     setDraft(next)
+    setDirty(true)
+  }
+
+  const updateAisles = (next: Aisle[]) => {
+    setDraftAisles(next)
+    setDirty(true)
+  }
+
+  const updateGates = (next: DraftGate[]) => {
+    setDraftGates(next)
     setDirty(true)
   }
 
@@ -71,8 +98,46 @@ export function LayoutBuilder() {
         price_multiplier: slot.price_multiplier, is_active: slot.is_active,
       }))
       await api.saveLayout(facilityId, levelId, payload)
+
+      // Driveways live on the level; the router follows them.
+      await api.updateLevel(facilityId, levelId, {
+        name: level?.name ?? 'Ground',
+        order_index: level?.order_index ?? 0,
+        canvas_width: level?.canvas_width ?? 60,
+        canvas_height: level?.canvas_height ?? 40,
+        aisles: draftAisles,
+      })
+
+      // Gates: create, update or delete to match the canvas.
+      const existing = (gates.data ?? []).filter(
+        (g) => !g.level_id || g.level_id === levelId,
+      )
+      const keptIds = new Set(draftGates.map((g) => g.id).filter(Boolean))
+      for (const gate of existing) {
+        if (!keptIds.has(gate.id)) await api.deleteGate(facilityId, gate.id)
+      }
+      for (const gate of draftGates) {
+        if (gate.id) {
+          await api.updateGate(facilityId, gate.id, {
+            name: gate.name, kind: gate.kind, x: gate.x, y: gate.y,
+            is_primary: gate.is_primary, level_id: levelId,
+          })
+        } else {
+          await api.createGate(facilityId, {
+            name: gate.name, kind: gate.kind, x: gate.x, y: gate.y,
+            is_primary: gate.is_primary, level_id: levelId,
+          })
+        }
+      }
+
       slots.refresh()
-      setNotice(`Saved ${payload.length} bays. Distances from the entry gate were recomputed.`)
+      gates.refresh()
+      levels.refresh()
+      setNotice(
+        `Saved ${payload.length} bays, ${draftAisles.length} driveways and ` +
+        `${draftGates.length} gates. Every bay's routed distance from the primary ` +
+        `gate was recomputed.`,
+      )
       setDirty(false)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'The layout could not be saved.')
@@ -178,7 +243,7 @@ export function LayoutBuilder() {
 
       <Card
         title={level ? `${level.name} — ${draft.length} bays` : 'Layout'}
-        subtitle="Coordinates are in metres. Occupied bays cannot be deleted."
+        subtitle="Coordinates are in metres. Bays, driveways and gates all save together."
         action={
           <div className="flex items-center gap-2">
             {gates.data?.map((gate) => (
@@ -195,7 +260,11 @@ export function LayoutBuilder() {
           <LayoutEditor
             level={level}
             slots={draft}
-            onChange={update}
+            aisles={draftAisles}
+            gates={draftGates}
+            onSlotsChange={update}
+            onAislesChange={updateAisles}
+            onGatesChange={updateGates}
             onSave={save}
             saving={saving}
             dirty={dirty}

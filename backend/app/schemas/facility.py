@@ -180,6 +180,20 @@ class GateCreate(BaseModel):
     is_primary: bool = False
 
 
+class GateUpdate(BaseModel):
+    """Partial update. Moving a gate re-ranks every bay, so the router
+    recomputes routed distances whenever a position or primary flag changes."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=60)
+    kind: GateKind | None = None
+    level_id: int | None = None
+    x: float | None = None
+    y: float | None = None
+    camera_id: str | None = None
+    is_primary: bool | None = None
+    is_active: bool | None = None
+
+
 class GateOut(ORMModel):
     id: int
     facility_id: int
