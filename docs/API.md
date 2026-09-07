@@ -266,6 +266,10 @@ curl "localhost:8000/api/v1/benchmark/allocation/sweep?trials=5"
 
 ## Health
 
+When the frontend bundle is present (the Docker image), the SPA is served at `/`
+and the JSON service banner moves to `/api`. In development Vite serves the SPA
+and `/` returns the banner.
+
 `GET /health` reports every subsystem separately, so "degraded" is actionable
 rather than a single opaque flag:
 

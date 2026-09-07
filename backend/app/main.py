@@ -6,11 +6,11 @@ import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
@@ -148,7 +148,7 @@ async def unhandled_error_handler(request: Request, exc: Exception) -> JSONRespo
     )
 
 
-@app.get("/", tags=["meta"], summary="Service banner")
+@app.get("/api", tags=["meta"], summary="Service banner")
 async def root() -> dict:
     return {
         "name": settings.app_name,
@@ -157,6 +157,7 @@ async def root() -> dict:
         "docs": "/docs",
         "health": "/health",
         "api": settings.api_v1_prefix,
+        "banner": "/api",
         "open_data": f"{settings.api_v1_prefix}/city/availability",
     }
 
@@ -189,18 +190,44 @@ app.include_router(ws_router)
 app.mount("/media", StaticFiles(directory=str(settings.data_dir)), name="media")
 
 
+# Paths the SPA fallback must never swallow.
+_API_PREFIXES = ("api", "ws", "health", "docs", "redoc", "openapi.json", "media")
+
+
 def _mount_frontend() -> None:
     """Serve the built SPA when it is present (the Docker image bundles it).
 
     In development Vite serves the frontend and proxies here, so this directory
-    does not exist and the mount is skipped. `html=True` makes StaticFiles fall
-    back to index.html, which is what a client-side router needs for deep links.
+    does not exist and everything below is skipped.
+
+    A bare `StaticFiles(html=True)` mount is not enough on its own: it serves
+    index.html for "/" but 404s on a client-routed deep link like /wallet,
+    because no such file exists. The catch-all below returns index.html for any
+    unmatched non-API path, which is what a browser-history router needs to
+    survive a hard refresh.
     """
     static_dir = BACKEND_ROOT / "static"
-    if not (static_dir / "index.html").exists():
+    index = static_dir / "index.html"
+    if not index.exists():
         log.info("no bundled frontend — run the Vite dev server separately")
         return
-    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="frontend")
+
+    app.mount("/assets", StaticFiles(directory=str(static_dir / "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa(full_path: str) -> FileResponse:
+        if full_path.split("/", 1)[0] in _API_PREFIXES:
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Serve a real file when one exists (favicon, robots.txt, …), else the app.
+        candidate = (static_dir / full_path).resolve()
+        if (
+            full_path
+            and candidate.is_file()
+            and candidate.is_relative_to(static_dir.resolve())
+        ):
+            return FileResponse(candidate)
+        return FileResponse(index)
+
     log.info("serving bundled frontend", extra={"path": str(static_dir)})
 
 

@@ -34,3 +34,6 @@ Thumbs.db
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Frontend bundle copied in by the Docker build
+backend/static/
