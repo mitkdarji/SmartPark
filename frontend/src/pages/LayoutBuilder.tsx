@@ -49,6 +49,19 @@ export function LayoutBuilder() {
     setDirty(false)
   }, [slots.data])
 
+  // The canvas holds an unsaved draft in React state — the one place in the app
+  // where closing the tab really does lose work. Everything else is a committed
+  // database transaction the moment it happens.
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
+
   const level = useMemo(
     () => levels.data?.find((l) => l.id === levelId) ?? null,
     [levels.data, levelId],
@@ -242,7 +255,12 @@ export function LayoutBuilder() {
       )}
 
       <Card
-        title={level ? `${level.name} — ${draft.length} bays` : 'Layout'}
+        title={
+          <span className="flex items-center gap-2">
+            {level ? `${level.name} — ${draft.length} bays` : 'Layout'}
+            {dirty && <Badge tone="warn">Unsaved changes</Badge>}
+          </span>
+        }
         subtitle="Coordinates are in metres. Bays, driveways and gates all save together."
         action={
           <div className="flex items-center gap-2">
