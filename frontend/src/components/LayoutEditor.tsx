@@ -127,15 +127,27 @@ export function LayoutEditor({
     return { width: Math.max(...xs) + 4, height: Math.max(...ys) + 4 }
   }, [level, slots, gates, aisles])
 
+  /**
+   * Screen pixels -> layout metres.
+   *
+   * This must go through the SVG's own transform, not through
+   * getBoundingClientRect arithmetic. The viewBox is rendered with the default
+   * `xMidYMid meet`, which scales it *uniformly* and *centres* it, leaving
+   * letterbox margins on whichever axis has slack. Deriving the scale from the
+   * element's width and height instead assumes it stretches to fill, which
+   * gets both the scale and the origin wrong — clicks landed a bay or two off,
+   * and the error grew with distance from the centre.
+   *
+   * getScreenCTM reports the actual transform in force, so this stays correct
+   * under letterboxing, CSS scaling and any future zoom or pan.
+   */
   const toMetres = useCallback((event: React.MouseEvent): Point => {
     const svg = svgRef.current
-    if (!svg) return { x: 0, y: 0 }
-    const rect = svg.getBoundingClientRect()
-    return {
-      x: (event.clientX - rect.left) * (extent.width / rect.width),
-      y: (event.clientY - rect.top) * (extent.height / rect.height),
-    }
-  }, [extent])
+    const ctm = svg?.getScreenCTM()
+    if (!svg || !ctm) return { x: 0, y: 0 }
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse())
+    return { x: point.x, y: point.y }
+  }, [])
 
   const nextCode = useCallback(() => {
     const used = new Set(slots.map((s) => s.code))
@@ -437,6 +449,7 @@ export function LayoutEditor({
         <svg
           ref={svgRef}
           viewBox={`0 0 ${extent.width} ${extent.height}`}
+          preserveAspectRatio="xMidYMid meet"
           width="100%"
           height={480}
           className={`select-none rounded-lg border border-ink-800 bg-ink-950/70 ${
