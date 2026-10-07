@@ -13,6 +13,24 @@ a voice assistant, an operations copilot, and a public open-data feed.
 
 ![SmartPark operator dashboard](docs/images/01-dashboard.png)
 
+> ### Status: what is and is not proven
+>
+> **The image pipeline is real and complete.** A JPEG posted to `/gates/entry` is
+> decoded, localised, deskewed, read by the OCR ensemble, allocated a bay and
+> billed — no stubs anywhere in that path.
+>
+> **It has not been validated on real-world photographs.** Every accuracy figure
+> below was measured on frames SmartPark renders itself. With only the built-in
+> reader installed, a plate drawn in a font it has not seen scores **0 out of 5**,
+> because that reader matches glyphs against templates in the *same font family*
+> the generator draws with. On real camera imagery it should be assumed not to work.
+>
+> Reading genuine photographs needs one of the backends built for it — `easyocr`
+> (`pip install -r backend/requirements-ai.txt`) or `ANTHROPIC_API_KEY` for the
+> Claude vision escalation. Both are supported; neither is installed by default,
+> and nothing in this repository has yet been tested against a photograph of a
+> real number plate.
+
 ---
 
 ## Quick start
@@ -186,10 +204,28 @@ and `hybrid` gets most of both. One hypothesis behind the recency policy did
 | Exact match | 92% | 96% | 96% | 76% | 96% | 92% |
 | Latency | 36 ms | 35 ms | 35 ms | 35 ms | 38 ms | 39 ms |
 
-Measured on frames SmartPark renders itself, so this is an **upper bound**: the
-built-in reader shares a font family with the generator. Install `easyocr` or set
-`ANTHROPIC_API_KEY` for representative accuracy on real camera imagery. The
-caveat is printed alongside the number everywhere it appears.
+**Read that table as a pipeline test, not an accuracy claim.** It shows the
+detector, deskew, preprocessing fan-out and voting ensemble working under
+controlled degradation — blur, noise, skew, glare. It does not show that the
+system can read a real plate.
+
+The same pipeline, given plates rendered in Arial instead of the generator's
+Hershey font:
+
+| Font | Correct |
+|---|---:|
+| Hershey — what the generator draws with | **5 / 5** |
+| Arial — a font the reader has never seen | **0 / 5** |
+
+That is the honest measure of the built-in reader: it matches glyph bitmaps
+against templates drawn in one font family, so it generalises to nothing else.
+It exists so the platform has no hard dependency on a heavy runtime and stays
+demonstrable offline — not because it is fit for a gate camera.
+
+Real-world reading is the job of `easyocr` (a CRNN trained on photographs) or the
+Claude vision escalation. Both are wired in and selected by the same ensemble;
+install or configure either and this number changes. Until then, the gate console
+and the tests exercise the pipeline, not the recognition.
 
 **Forecasting** — holdout MAE 4.3 percentage points against a persistence
 baseline of 10.1 pp, on 480 hourly observations. The API reports both, so a model

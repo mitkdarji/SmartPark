@@ -97,9 +97,10 @@ def run_anpr(samples: int) -> list[dict]:
         )
 
     print(
-        "\nMeasured on frames SmartPark renders itself, so this is an upper bound:\n"
-        "the built-in segmentation reader shares a font family with the generator.\n"
-        "Install easyocr or set ANTHROPIC_API_KEY for representative real-world numbers."
+        "\nThis measures the PIPELINE, not recognition accuracy. The frames are\n"
+        "rendered by SmartPark and the built-in reader matches templates from the\n"
+        "same font family — it scores 0/5 on plates drawn in an unseen font.\n"
+        "Install easyocr or set ANTHROPIC_API_KEY to read real photographs."
     )
     return rows
 

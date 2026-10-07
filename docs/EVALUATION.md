@@ -198,23 +198,36 @@ matters more than the accuracy number.
 
 ### 2.3 What this number is not
 
-**This is an upper bound.** The frames are rendered by SmartPark's own generator,
-and the built-in segmentation reader matches glyphs against templates drawn from
-the same font family. On real camera imagery the segmentation backend will do
-considerably worse.
+**It is not an accuracy claim.** The frames are rendered by SmartPark's own
+generator, and the built-in segmentation reader matches glyphs against templates
+drawn from the *same font family*. The table above measures the pipeline —
+detection, deskew, the preprocessing fan-out, the voting ensemble — under
+controlled degradation. It does not measure recognition.
 
-That is why the ensemble exists. `easyocr` (a CRNN trained on real photographs)
-and the Claude vision escalation are the backends that carry real-world accuracy;
-the built-in reader exists so the platform has **no hard dependency on a heavy
-runtime** and stays demonstrable offline. The caveat is printed next to the
-number in the CLI, the API response and the UI — not only here.
+Rendering the same plates in Arial instead, and changing nothing else:
 
-An honest evaluation on real imagery needs a labelled dataset of Indian plates
-photographed at gate-camera angles. That is the obvious next piece of work, and
-the `RecognitionEvent` table already stores operator corrections precisely so
-that dataset accumulates from live use.
+| Font | Exact match |
+|---|---:|
+| Hershey (the generator's font) | **5 / 5** |
+| Arial (unseen by the reader) | **0 / 5** |
 
----
+Four of the five Arial plates produced no read at all; the fifth returned
+`TN09PQ3821` for `TN09PQ3321`. That is the correct result for a template
+matcher given a font it has never seen, and it is why the built-in reader is
+discounted to 0.85 confidence and sits last in the ensemble's trust weighting.
+
+It exists for one reason: so the platform has **no hard dependency on a heavy
+runtime** and stays fully demonstrable offline. It is not fit for a gate camera.
+
+Real-world reading is the job of `easyocr` — a CRNN trained on photographs — or
+the Claude vision escalation. Both are implemented, both plug into the same
+ensemble, and neither is installed by default. **Nothing in this repository has
+been tested against a photograph of a real number plate.**
+
+An honest evaluation needs a labelled dataset of Indian plates shot at
+gate-camera angles. That is the obvious next piece of work, and the
+`RecognitionEvent` table already stores operator corrections precisely so that
+dataset accumulates from live use.
 
 ## 3. Demand forecasting
 

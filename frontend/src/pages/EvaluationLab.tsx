@@ -390,7 +390,20 @@ export function EvaluationLab() {
                   <p className="mb-1 font-semibold text-signal-amber">
                     What this number is and is not
                   </p>
-                  {anpr.note}
+                  <p>
+                    This measures the <b>pipeline</b> — detection, deskew, the
+                    preprocessing fan-out and the voting ensemble — under controlled
+                    degradation. It is <b>not</b> a recognition-accuracy claim.
+                  </p>
+                  <p className="mt-1.5">
+                    The frames are rendered by SmartPark, and the built-in reader
+                    matches glyph templates from the same font family. Given plates
+                    drawn in an unseen font it scores <b>0 of 5</b>. It exists so the
+                    platform has no hard dependency on a heavy runtime, not because it
+                    can read a gate camera. Install <code>easyocr</code> or set{' '}
+                    <code>ANTHROPIC_API_KEY</code> for the backends built to read real
+                    photographs.
+                  </p>
                 </div>
               </>
             )}

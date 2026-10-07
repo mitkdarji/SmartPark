@@ -173,9 +173,11 @@ async def benchmark_anpr(
         "backends": anpr.status(),
         "failures": failures,
         "note": (
-            "Measured on synthetic frames rendered by SmartPark, so this is an "
-            "upper bound: the built-in segmentation reader shares a font family "
-            "with the generator. Install easyocr or configure the vision backend "
-            "for representative accuracy on real camera imagery."
+            "This measures the pipeline, not recognition accuracy. The frames are "
+            "rendered by SmartPark and the built-in reader matches templates from "
+            "the same font family, so it scores near-perfectly here and 0/5 on "
+            "plates drawn in an unseen font. It is not fit for a gate camera: "
+            "install easyocr or set ANTHROPIC_API_KEY for the backends built to "
+            "read real photographs."
         ),
     }

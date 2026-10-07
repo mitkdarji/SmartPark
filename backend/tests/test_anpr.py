@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import cv2
+import numpy as np
 import pytest
 
 from app.services.anpr.ensemble import reconcile
@@ -106,3 +110,83 @@ def test_pipeline_reports_backend_status():
     assert "segmentation" in status["backends"]
     assert status["min_confidence"] > 0
     assert status["active"]
+
+
+# ─────────────────────────────────────────────────────────────
+# The limitation of the built-in reader, pinned as a test.
+#
+# The synthetic benchmark scores near-perfectly, which is easy to mistake for a
+# recognition-accuracy result. It is not: the generator and the built-in reader
+# share a font family, so the benchmark measures the *pipeline*. These tests make
+# that explicit, so nobody — including a future reader of the README — mistakes
+# one for the other.
+# ─────────────────────────────────────────────────────────────
+
+REAL_FONT = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
+
+
+def _plate_in_font(text: str, font_path: str = REAL_FONT) -> np.ndarray:
+    """Render a plate with a TrueType font the template matcher has never seen."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    img = Image.new("RGB", (440, 100), (238, 240, 238))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([4, 4, 435, 95], outline=(18, 18, 20), width=3)
+    font = ImageFont.truetype(font_path, 58)
+    box = draw.textbbox((0, 0), text, font=font)
+    draw.text(
+        ((440 - (box[2] - box[0])) // 2, (100 - (box[3] - box[1])) // 2 - 8),
+        text, font=font, fill=(18, 18, 20),
+    )
+    plate = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+
+    frame = np.full((540, 960, 3), 70, np.uint8)
+    cv2.rectangle(frame, (80, 100), (880, 520), (90, 95, 105), -1)
+    height, width = 110, 484
+    frame[330 : 330 + height, 240 : 240 + width] = cv2.resize(plate, (width, height))
+    return cv2.GaussianBlur(frame, (3, 3), 0)
+
+
+@pytest.mark.skipif(
+    not Path(REAL_FONT).exists(), reason="needs a system TrueType font to render with"
+)
+def test_builtin_reader_does_not_generalise_beyond_its_own_font():
+    """The headline synthetic score does not transfer to an unseen font.
+
+    This is the single most important caveat about the recognition numbers, so it
+    is asserted rather than only written down. If a future backend makes the
+    built-in reader genuinely font-independent, this test fails and the README
+    claim should be revisited — which is exactly the intent.
+    """
+    plates = ["GJ01AB1234", "MH12XY5678", "KA05MN9012", "DL03CD4567", "TN09PQ3321"]
+
+    own_font = sum(
+        anpr.recognize(synth_capture(p, difficulty=0.2, seed=1)[0], persist=False).plate == p
+        for p in plates
+    )
+    unseen_font = sum(
+        anpr.recognize(_plate_in_font(p), persist=False).plate == p for p in plates
+    )
+
+    assert own_font >= 4, f"pipeline regression: only {own_font}/5 on its own font"
+    assert unseen_font < own_font, (
+        f"the built-in reader scored {unseen_font}/5 on an unseen font vs "
+        f"{own_font}/5 on its own. If that gap has closed, the recognition caveat "
+        f"in README.md and docs/EVALUATION.md is now wrong and must be updated."
+    )
+
+
+@pytest.mark.skipif(
+    not Path(REAL_FONT).exists(), reason="needs a system TrueType font to render with"
+)
+def test_a_failed_read_is_reported_as_needing_review_not_guessed():
+    """Failing is fine; failing *silently* is not.
+
+    A gate that opens on a confident wrong answer is far worse than one that
+    flags for review, so an unreadable frame must come back low-confidence.
+    """
+    result = anpr.recognize(_plate_in_font("MH12XY5678"), persist=False)
+    if result.plate != "MH12XY5678":
+        assert result.needs_review or not result.accepted, (
+            "a misread was returned as accepted with high confidence"
+        )
