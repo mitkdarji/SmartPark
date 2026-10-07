@@ -38,7 +38,7 @@ jobs:
       - name: Test
         working-directory: backend
         env:
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           SECRET_KEY: ci-secret-key-not-for-production
           AUTOMATION_ENABLED: "false"
         run: pytest -q
@@ -50,7 +50,7 @@ jobs:
       - name: Seed and boot
         working-directory: backend
         env:
-          DATABASE_URL: sqlite+aiosqlite:///./data/ci.db
+          DATABASE_URL: "sqlite+aiosqlite:///./data/ci.db"
           SECRET_KEY: ci-secret-key-not-for-production
         run: |
           python -m scripts.seed --reset --days 3
