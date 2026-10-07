@@ -11,6 +11,8 @@ Built end to end: computer vision, an allocation policy with a real evaluation
 harness, a billing engine, demand forecasting, anomaly detection, a rules engine,
 a voice assistant, an operations copilot, and a public open-data feed.
 
+![SmartPark operator dashboard](docs/images/01-dashboard.png)
+
 ---
 
 ## Quick start
@@ -55,6 +57,53 @@ Sign in with any of the seeded accounts (password `SmartPark2026!`):
    information regimes, with the numbers and the caveats.
 4. Sign in as the **driver** → your bay is highlighted, the route is drawn, and
    the assistant answers "where is my car?" from real data in about 5 ms.
+
+---
+
+## What it looks like
+
+### Gate &amp; ANPR console
+Drive the real recognition, allocation and billing pipeline with no hardware
+attached. A synthetic camera frame goes through detection, the OCR ensemble and
+the allocator, and the response shows the full inference trace — every backend's
+proposal, how consensus was reached, and why that bay was chosen.
+
+![Gate and ANPR console](docs/images/02-gate-anpr.png)
+
+### Driver view
+The bay is highlighted, the route is drawn along the facility's own driveway
+graph, and the charge accrues live. The assistant answers from real session data —
+"Where is my car?" resolves in about 12 ms without a model call, because a regex
+intent router maps it straight to a tool.
+
+![Driver view with route and assistant](docs/images/07-driver.png)
+
+### Layout builder
+Four tools — select, bay, driveway, gate. Coordinates are metres, and the
+driveways are not decoration: the wayfinder routes along them, and every bay's
+stored distance from the primary gate is measured through that graph.
+
+![Canvas layout builder](docs/images/03-layout.png)
+
+### Evaluation lab
+Six allocation policies measured over two information regimes, with the weighting
+stated and every underlying metric published so the ranking can be argued with.
+The notes explain where the proposed policy wins, and where its own founding
+hypothesis did not survive the data.
+
+![Allocation strategy benchmark](docs/images/05-evaluation.png)
+
+### Analytics
+KPIs, occupancy history, demand forecast with a widening uncertainty band, a
+per-bay utilisation heat map, and measured allocation performance on real traffic.
+
+![Analytics and forecasting](docs/images/04-analytics.png)
+
+### Operations
+Who is parked, what the cameras read and at what confidence, what needs a human,
+and a generated operations briefing grounded on a facts block.
+
+![Operations console](docs/images/06-operations.png)
 
 ---
 
