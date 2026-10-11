@@ -120,14 +120,22 @@ export function Toggle({
       onClick={() => onChange(!checked)}
       className="flex items-center gap-2.5 text-sm text-ink-200"
     >
+      {/*
+        `left-0.5` is load-bearing. Without an explicit `left`, an absolutely
+        positioned box falls back to its *static* position, which a <button>'s
+        UA-default `text-align: center` pushes to the middle of the track — the
+        knob then translated from there and hung 14px off the end. Anchoring it
+        and shrink-0 on the track make the geometry independent of inherited
+        text alignment and of whatever flex context the toggle is dropped into.
+      */}
       <span
-        className={`relative h-5 w-9 rounded-full transition-colors ${
+        className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
           checked ? 'bg-brand-600' : 'bg-ink-700'
         }`}
       >
         <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-            checked ? 'translate-x-4' : 'translate-x-0.5'
+          className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+            checked ? 'translate-x-4' : 'translate-x-0'
           }`}
         />
       </span>
