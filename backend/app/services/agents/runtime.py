@@ -358,10 +358,79 @@ class AgentRuntime:
         Deliberately narrow: it answers the handful of questions that make up most
         of the traffic and otherwise says plainly that it cannot help, rather than
         guessing and sounding authoritative while wrong.
+
+        It is routed by role. Every question the UI suggests is answerable here
+        without a model, because each one is a database query underneath — an
+        operator being told about their "wallet balance" is worse than no answer
+        at all.
         """
         text = message.lower()
         ctx = ToolContext(db=db, user=user, facility_id=facility_id)
 
+        if user.is_owner:
+            return await self._owner_fallback(ctx, text)
+        return await self._driver_fallback(ctx, text)
+
+    async def _owner_fallback(self, ctx: ToolContext, text: str) -> str:
+        if any(k in text for k in ("anomal", "alert", "security", "attention", "review")):
+            result = await ctx_safe(_call, ctx, "list_open_anomalies")
+            items = result.get("open_anomalies") or []
+            if not items:
+                return "There are no unresolved anomalies at this facility."
+            lead = items[0]
+            return (
+                f"There are {len(items)} unresolved anomalies. The most recent is "
+                f"{lead['severity']} severity: {lead['summary']}"
+            )
+
+        # Checked before the status branch: "what will occupancy be in 3 hours"
+        # contains "occupancy", so a future-tense signal has to win first.
+        if any(k in text for k in (
+            "forecast", "predict", "projected", "expect", "will", "later",
+            "tonight", "tomorrow", "next", "going to be", "peak",
+        )):
+            result = await ctx_safe(_call, ctx, "get_occupancy_forecast")
+            points = result.get("points") or []
+            if not points:
+                return "I do not have enough history to forecast occupancy yet."
+            peak = max(points, key=lambda p: p["occupancy_pct"])
+            model = str(result.get("model", "")).replace("_", " ")
+            return (
+                f"Occupancy is projected to peak around {peak['hour']:02d}:00 at "
+                f"{peak['occupancy_pct'] * 100:.0f}%. That comes from the {model} "
+                f"model — {result.get('note', '')}"
+            )
+
+        if any(k in text for k in ("revenue", "earned", "income", "money", "takings", "sales")):
+            result = await ctx_safe(_call, ctx, "get_revenue_report")
+            if "revenue" not in result:
+                return result.get("error", "I could not read the revenue figures.")
+            return (
+                f"Over the last {result['period_days']} days {result['facility']} took "
+                f"{result['revenue']} across {result['completed_sessions']} sessions, "
+                f"averaging {result['avg_revenue_per_session']} per visit and a "
+                f"{result['avg_stay_minutes']:.0f}-minute stay."
+            )
+
+        if any(k in text for k in ("running", "status", "how is", "occupancy", "full", "busy", "free", "right now")):
+            result = await ctx_safe(_call, ctx, "get_facility_status")
+            if "facility" not in result:
+                return result.get("error", "I could not read the facility status.")
+            return (
+                f"{result['facility']} is {result['occupancy_pct']}% full — "
+                f"{result['occupied']} of {result['capacity']} bays in use, "
+                f"{result['free']} free. There are {result['active_sessions']} active "
+                f"sessions and the current rate is {result['current_rate_per_hour']} per hour."
+            )
+
+        return (
+            "The AI assistant is not configured on this deployment, so I can only "
+            "answer a few set questions — how the facility is running, revenue for "
+            "a recent period, the occupancy forecast, or open anomalies. Set "
+            "ANTHROPIC_API_KEY to enable the full copilot."
+        )
+
+    async def _driver_fallback(self, ctx: ToolContext, text: str) -> str:
         if any(k in text for k in ("where", "find my", "my car", "my vehicle", "parked")):
             result = await ctx_safe(_call, ctx, "find_my_vehicle")
             if result.get("parked"):

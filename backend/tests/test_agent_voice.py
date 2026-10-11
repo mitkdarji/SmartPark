@@ -144,3 +144,76 @@ async def test_voice_status_reports_available_backends(client):
     body = (await client.get("/api/v1/voice/status")).json()
     assert "stt_backend" in body
     assert body["intent_router_patterns"] > 0
+
+
+# ─────────────────────────────────────────────────────────────
+# The offline fallback must be role-aware.
+#
+# An operator once asked "How is the facility running right now?" and was told
+# about their wallet balance and directions to their slot — the driver fallback,
+# served to someone who has neither. Worse, the Operations copilot *suggests*
+# four operator questions, and none of them were answerable without an API key,
+# even though every one is a plain database query underneath.
+# ─────────────────────────────────────────────────────────────
+
+OWNER_SUGGESTED = [
+    "How is the facility running right now?",
+    "Revenue for the last 7 days",
+    "What will occupancy be in 3 hours?",
+    "Any open anomalies?",
+]
+
+DRIVER_WORDS = ("wallet balance", "your vehicle is", "directions to your slot")
+
+
+async def test_operator_fallback_never_answers_with_driver_text(client, owner, facility):
+    """Every question the operator UI suggests must get an operator answer."""
+    for question in OWNER_SUGGESTED:
+        response = await client.post(
+            "/api/v1/agent/chat",
+            headers=auth(owner["access_token"]),
+            json={"message": question, "facility_id": facility["id"]},
+        )
+        assert response.status_code == 200, question
+        reply = response.json()["reply"].lower()
+
+        assert "your wallet balance" not in reply, f"driver text served to an owner: {question}"
+        assert "directions to your slot" not in reply, f"driver text served to an owner: {question}"
+        # It must actually answer, not just decline.
+        assert "can only answer a few set questions" not in reply, (
+            f"the UI suggests {question!r} but the fallback cannot answer it"
+        )
+
+
+async def test_operator_fallback_routes_each_question_to_the_right_tool(client, owner, facility):
+    """Spot-check that the four questions reach four different answers."""
+    replies = {}
+    for question in OWNER_SUGGESTED:
+        r = await client.post(
+            "/api/v1/agent/chat",
+            headers=auth(owner["access_token"]),
+            json={"message": question, "facility_id": facility["id"]},
+        )
+        replies[question] = r.json()["reply"].lower()
+
+    assert "full" in replies[OWNER_SUGGESTED[0]] or "bays" in replies[OWNER_SUGGESTED[0]]
+    assert "sessions" in replies[OWNER_SUGGESTED[1]] or "took" in replies[OWNER_SUGGESTED[1]]
+    # The forecast question contains the word "occupancy", so it must not be
+    # swallowed by the live-status branch.
+    assert any(w in replies[OWNER_SUGGESTED[2]] for w in ("projected", "forecast", "peak", "history"))
+    assert "anomal" in replies[OWNER_SUGGESTED[3]]
+
+
+async def test_driver_fallback_is_unchanged(client, driver, facility):
+    """The driver path must keep working exactly as before."""
+    await client.post(
+        "/api/v1/gates/scan/entry",
+        json={"facility_id": facility["id"], "plate": "GJ01AB1234"},
+    )
+    response = await client.post(
+        "/api/v1/agent/chat",
+        headers=auth(driver["access_token"]),
+        json={"message": "where is my car?"},
+    )
+    reply = response.json()["reply"].lower()
+    assert "slot" in reply and "zone" in reply
